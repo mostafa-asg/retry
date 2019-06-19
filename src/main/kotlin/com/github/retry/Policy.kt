@@ -1,6 +1,8 @@
 package com.github.retry
 
-typealias RetryHandler = (Int, Throwable, ExecutionContext) -> Unit
+import java.time.Duration
+
+typealias RetryHandler = (Throwable, ExecutionContext) -> Unit
 typealias FailureHandler = (Throwable) -> Unit
 
 class RetryableException<T: Throwable>(val clazz: Class<T>, val condition: (T) -> Boolean = {true}) {
@@ -46,7 +48,7 @@ abstract class Policy {
 
 class PolicyBuilder: Policy() {
     override val exceptions = mutableListOf<RetryableException<*>>()
-    override var onRetry: RetryHandler = { _, _, _ -> }
+    override var onRetry: RetryHandler = { _, _ -> }
     override var onFailure: FailureHandler = { _ -> }
 
     inline fun <reified T: Throwable> or(): PolicyBuilder {
@@ -62,25 +64,43 @@ class PolicyBuilder: Policy() {
         return this
     }
 
-    fun retry(maxRetry: Int): FixedRetry {
+    fun retry(maxRetry: Int, sleepMillis: List<Long>): FixedRetry {
         val policy =  FixedRetryPolicy(
                 exceptions,
                 onRetry,
                 onFailure,
-                maxRetry
+                maxRetry,
+                sleepMillis
         )
 
         return FixedRetry(policy)
     }
 
-    fun forever(): ForeverRetry {
+    fun retry(maxRetry: Int, sleepMillis: Long = 1000): FixedRetry {
+        return retry(maxRetry, listOf(sleepMillis))
+    }
+
+    fun forever(sleepMillis: Long = 1000): ForeverRetry {
         val policy =  ForeverRetryPolicy(
                 exceptions,
                 onRetry,
-                onFailure
+                onFailure,
+                sleepMillis
         )
 
         return ForeverRetry(policy)
+    }
+
+    fun time(duration: Duration, sleepMillis: Long = 1000): TimeBasedRetry {
+        val policy =  TimeBasedPolicy(
+                exceptions,
+                onRetry,
+                onFailure,
+                duration,
+                sleepMillis
+        )
+
+        return TimeBasedRetry(policy)
     }
 
     fun onRetry(retryFunc: RetryHandler): PolicyBuilder {
@@ -96,27 +116,52 @@ class PolicyBuilder: Policy() {
 
 interface ExecutionContext {
     fun cancel()
+    fun attempt(): Int
 }
 
 open class FixedRetryPolicy(
         override val exceptions: List<RetryableException<*>>,
         override val onRetry: RetryHandler,
         override val onFailure: FailureHandler,
-        val maxRetry: Int): Policy()
+        val maxRetry: Int,
+        val sleepMillis: List<Long>): Policy()
 
 class ForeverRetryPolicy(
         override val exceptions: List<RetryableException<*>>,
         override val onRetry: RetryHandler,
-        override val onFailure: FailureHandler): FixedRetryPolicy(exceptions, onRetry, onFailure, Int.MAX_VALUE)
+        override val onFailure: FailureHandler,
+        sleepMillis: Long = 1000): FixedRetryPolicy(exceptions, onRetry, onFailure, Int.MAX_VALUE, listOf(sleepMillis))
+
+open class TimeBasedPolicy(
+        override val exceptions: List<RetryableException<*>>,
+        override val onRetry: RetryHandler,
+        override val onFailure: FailureHandler,
+        val maxTime: Duration,
+        val sleepMillis: Long): Policy()
 
 open class FixedRetry(val policy: FixedRetryPolicy) {
 
     private var giveUp = false
 
     private val executionContext = object: ExecutionContext {
+
         override fun cancel() {
             giveUp = true
         }
+
+        private var attempt:Int = 0
+        override fun attempt(): Int = attempt
+        fun setAttempt(attempt: Int) {
+            this.attempt = attempt
+        }
+    }
+
+    private fun ExecutionContext.getNextSleep(): Long {
+        if ( attempt()-1 < policy.sleepMillis.size) {
+            return policy.sleepMillis[attempt()-1]
+        }
+
+        return policy.sleepMillis.last()
     }
 
     operator fun <R> invoke(recover: (() -> R)? = null, action: () -> R): R {
@@ -129,11 +174,15 @@ open class FixedRetry(val policy: FixedRetryPolicy) {
             catch (exc: Throwable) {
                 lastException = exc
 
+                executionContext.setAttempt(attempt)
+
                 if (policy.match(exc)) {
-                    policy.onRetry(attempt, exc, executionContext)
+                    policy.onRetry(exc, executionContext)
                     if (giveUp) {
                         throw exc
                     }
+
+                    Thread.sleep(executionContext.getNextSleep())
                 } else {
                     break // exit for
                 }
@@ -150,4 +199,23 @@ open class FixedRetry(val policy: FixedRetryPolicy) {
 
 }
 
-class ForeverRetry(policy: ForeverRetryPolicy): FixedRetry(policy)
+open class ForeverRetry(policy: ForeverRetryPolicy): FixedRetry(policy)
+class TimeBasedRetry(val policy: TimeBasedPolicy) {
+
+    private val foreverRetry =  Policy.handle<Exception>()
+                                      .onRetry(this::onRetry)
+                                      .forever(policy.sleepMillis)
+
+    private val deadLine = System.currentTimeMillis() + policy.maxTime.toMillis()
+
+    operator fun <R> invoke(recover: (() -> R)? = null, action: () -> R): R {
+        return foreverRetry.invoke(recover, action)
+    }
+
+    private fun onRetry(exc: Throwable, context: ExecutionContext) {
+        if (deadLine < System.currentTimeMillis()) {
+            context.cancel()
+        }
+    }
+
+}
