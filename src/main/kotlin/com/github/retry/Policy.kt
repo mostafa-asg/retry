@@ -95,13 +95,13 @@ class PolicyBuilder internal constructor(): Policy() {
         return this
     }
 
-    fun retry(maxRetry: Int): FixedRetry {
+    fun retry(max: Int): FixedRetry {
         val policy =  FixedRetryPolicy(
                 exceptions,
                 onRetry,
                 onFailure,
                 sleepMillis,
-                maxRetry
+                max
         )
 
         return FixedRetry(policy)
