@@ -3,7 +3,7 @@ package com.github.retry
 import org.junit.Test
 import org.junit.Assert.*
 
-open class ExceptionA(): Exception()
+open class ExceptionA: Exception()
 class ExceptionB(val code: Int): ExceptionA()
 
 class FixedRetryTest {
@@ -17,7 +17,7 @@ class FixedRetryTest {
             notThrowException()
         }
 
-        assertEquals(result, 120)
+        assertEquals(120, result)
     }
 
     @Test
@@ -42,10 +42,10 @@ class FixedRetryTest {
         }
 
         assertTrue(result.isFailure)
-        //assertTrue(result.exceptionOrNull() is ExceptionB)
+        assertTrue(result.exceptionOrNull() is ExceptionB)
 
         val expectedWorkflow = "OnRetry 1\nOnRetry 2\nOnRetry 3\nOnFailure"
-        assertEquals(workflow, expectedWorkflow)
+        assertEquals(expectedWorkflow, workflow)
     }
 
     @Test
@@ -72,7 +72,7 @@ class FixedRetryTest {
         //assertTrue(result.exceptionOrNull() is ExceptionB)
 
         val expectedWorkflow = "OnFailure"
-        assertEquals(workflow, expectedWorkflow)
+        assertEquals(expectedWorkflow, workflow)
     }
 
     @Test
@@ -98,7 +98,7 @@ class FixedRetryTest {
             }
         }
         assertTrue(result2.isFailure)
-        assertEquals("", workflow) // OnRetry should not be called
+        assertEquals(workflow, "") // OnRetry should not be called
     }
 
     @Test
