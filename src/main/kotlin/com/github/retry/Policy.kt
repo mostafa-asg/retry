@@ -69,14 +69,20 @@ class PolicyBuilder internal constructor(): Policy() {
         return this
     }
 
-    fun sleep(millis: Long) {
+    fun sleep(millis: Long): PolicyBuilder {
         sleepMillis.clear()
         sleepMillis.add(millis)
+        return this
     }
 
-    fun sleep(millis: List<Long>) {
+    fun sleep(millis: List<Long>): PolicyBuilder {
         sleepMillis.clear()
         sleepMillis.addAll(millis)
+        return this
+    }
+
+    fun sleep(vararg millis: Long): PolicyBuilder {
+        return sleep(millis.toList())
     }
 
     fun onRetry(retryFunc: RetryHandler): PolicyBuilder {
@@ -149,18 +155,7 @@ open class TimeBasedPolicy(
         override val onRetry: RetryHandler,
         override val onFailure: FailureHandler,
         override val sleepMillis: List<Long>,
-        val maxTime: Duration): Policy() {
-
-    fun toForeverRetryPolicy(): ForeverRetryPolicy {
-        return ForeverRetryPolicy(
-                exceptions,
-                onRetry,
-                onFailure,
-                sleepMillis
-        )
-    }
-
-}
+        val maxTime: Duration): Policy()
 
 open class FixedRetry(val policy: FixedRetryPolicy) {
 
@@ -205,7 +200,9 @@ open class FixedRetry(val policy: FixedRetryPolicy) {
                         throw exc
                     }
 
-                    Thread.sleep(executionContext.getNextSleep())
+                    if (policy.sleepMillis.isNotEmpty()) {
+                        Thread.sleep(executionContext.getNextSleep())
+                    }
                 } else {
                     break // exit for
                 }
@@ -224,18 +221,39 @@ open class FixedRetry(val policy: FixedRetryPolicy) {
 
 open class ForeverRetry(policy: ForeverRetryPolicy): FixedRetry(policy)
 
-class TimeBasedRetry(policy: TimeBasedPolicy) {
+class TimeBasedRetry(val policy: TimeBasedPolicy) {
 
-    private val foreverRetry = ForeverRetry(policy.toForeverRetryPolicy())
+    private val foreverRetry = ForeverRetry(
+            ForeverRetryPolicy(
+                    policy.exceptions,
+                    this::onRetry,
+                    policy.onFailure,
+                    policy.sleepMillis
+            )
+    )
 
-    private val deadLine = System.currentTimeMillis() + policy.maxTime.toMillis()
+    private var deadLine = 0L
+    private var deadLineReached = false
 
     operator fun <R> invoke(recover: (() -> R)? = null, action: () -> R): R {
-        return foreverRetry.invoke(recover, action)
+        deadLine = System.currentTimeMillis() + policy.maxTime.toMillis()
+
+        val result = runCatching {
+            foreverRetry.invoke(recover, action)
+        }
+
+        if (deadLineReached) {
+            policy.onFailure(result.exceptionOrNull()!!)
+        }
+
+        return result.getOrThrow()
     }
 
     private fun onRetry(exc: Throwable, context: ExecutionContext) {
+        policy.onRetry(exc, context)
+
         if (deadLine < System.currentTimeMillis()) {
+            deadLineReached = true
             context.cancel()
         }
     }

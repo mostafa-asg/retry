@@ -1,0 +1,134 @@
+package com.github.retry
+
+import org.junit.Test
+import org.junit.Assert.*
+
+open class ExceptionA(): Exception()
+class ExceptionB(val code: Int): ExceptionA()
+
+class FixedRetryTest {
+
+    @Test
+    fun testWithoutException() {
+        val retryAtLeast3Times = Policy.handle<Throwable>()
+                                .retry(3)
+
+        val result = retryAtLeast3Times {
+            notThrowException()
+        }
+
+        assertEquals(result, 120)
+    }
+
+    @Test
+    fun testThrowExceptionOfSubclasses() {
+        var workflow: String = ""
+
+        val retryAtLeast3Times = Policy.handle<ExceptionA>()
+                                       .onRetry { exc, context ->
+                                           assertTrue( exc is ExceptionB )
+                                           workflow += "OnRetry ${context.attempt()}\n"
+                                       }
+                                       .onFailure { exc ->
+                                           assertTrue( exc is ExceptionB )
+                                           workflow += "OnFailure"
+                                       }
+                                       .retry(3)
+
+        val result = runCatching {
+            retryAtLeast3Times {
+                throwExceptionB()
+            }
+        }
+
+        assertTrue(result.isFailure)
+        //assertTrue(result.exceptionOrNull() is ExceptionB)
+
+        val expectedWorkflow = "OnRetry 1\nOnRetry 2\nOnRetry 3\nOnFailure"
+        assertEquals(workflow, expectedWorkflow)
+    }
+
+    @Test
+    fun should_not_retry_on_unrelated_exceptions_test() {
+        var workflow: String = ""
+
+        val retryAtLeast3Times = Policy.handle<ExceptionB>()
+                .onRetry { exc, context ->
+                    fail("OnRetry should not be called")
+                }
+                .onFailure { exc ->
+                    assertTrue( exc is ExceptionA )
+                    workflow += "OnFailure"
+                }
+                .retry(3)
+
+        val result = runCatching {
+            retryAtLeast3Times {
+                throwExceptionA()
+            }
+        }
+
+        assertTrue(result.isFailure)
+        //assertTrue(result.exceptionOrNull() is ExceptionB)
+
+        val expectedWorkflow = "OnFailure"
+        assertEquals(workflow, expectedWorkflow)
+    }
+
+    @Test
+    fun testSleepsWorkCorrectly1() {
+        val retryNum = 3
+        val sleep = 200L
+        val inaccuracy = 100
+
+        val retry = Policy.handle<Throwable>()
+                          .sleep(sleep)
+                          .retry(retryNum)
+
+        val start = System.currentTimeMillis()
+
+        runCatching {
+            retry {
+                throw Exception()
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        assertTrue(now - start >= (retryNum * sleep - inaccuracy))
+    }
+
+    @Test
+    fun testSleepsWorkCorrectly2() {
+        val retryNum = 3
+        val sleep = listOf<Long>(100, 200, 400)
+        val inaccuracy = 100
+
+        val retry = Policy.handle<Throwable>()
+                .sleep(
+                        sleep
+                )
+                .retry(retryNum)
+
+        val start = System.currentTimeMillis()
+
+        runCatching {
+            retry {
+                throw Exception()
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        assertTrue(now - start >= (sleep.sum() - inaccuracy))
+    }
+
+    private fun notThrowException(): Int = 120
+
+    private fun throwExceptionA(): Int {
+        throw ExceptionA()
+    }
+
+    private fun throwExceptionB(): Int {
+        throw ExceptionB(200)
+    }
+
+}
