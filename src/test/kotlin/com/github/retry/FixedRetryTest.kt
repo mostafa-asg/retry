@@ -22,7 +22,7 @@ class FixedRetryTest {
 
     @Test
     fun testThrowExceptionOfSubclasses() {
-        var workflow: String = ""
+        var workflow = ""
 
         val retryAtLeast3Times = Policy.handle<ExceptionA>()
                                        .onRetry { exc, context ->
@@ -50,7 +50,7 @@ class FixedRetryTest {
 
     @Test
     fun should_not_retry_on_unrelated_exceptions_test() {
-        var workflow: String = ""
+        var workflow = ""
 
         val retryAtLeast3Times = Policy.handle<ExceptionB>()
                 .onRetry { exc, context ->
@@ -73,6 +73,32 @@ class FixedRetryTest {
 
         val expectedWorkflow = "OnFailure"
         assertEquals(workflow, expectedWorkflow)
+    }
+
+    @Test
+    fun exceptions_with_conditions_test() {
+        var workflow = ""
+        val retryAtLeast3Times = Policy.handle<ExceptionB> { exc -> exc.code == 1001 }
+                                       .onRetry { _, _ -> workflow += "R" }
+                                       .retry(3)
+
+        val result1 = runCatching {
+            retryAtLeast3Times {
+                throw ExceptionB(code = 1001)
+            }
+        }
+        assertTrue(result1.isFailure)
+        assertEquals("RRR", workflow)
+
+        workflow = ""
+
+        val result2 = runCatching {
+            retryAtLeast3Times {
+                throw ExceptionB(code = 666)
+            }
+        }
+        assertTrue(result2.isFailure)
+        assertEquals("", workflow) // OnRetry should not be called
     }
 
     @Test

@@ -60,11 +60,11 @@ class PolicyBuilder internal constructor(): Policy() {
         return or(T::class.java) {true}
     }
 
-    inline fun <reified T: Throwable> or(noinline condition: (Throwable) -> Boolean): PolicyBuilder {
+    inline fun <reified T: Throwable> or(noinline condition: (T) -> Boolean): PolicyBuilder {
         return or(T::class.java, condition)
     }
 
-    fun <T: Throwable> or(clazz: Class<T>, condition: (Throwable) -> Boolean): PolicyBuilder {
+    fun <T: Throwable> or(clazz: Class<T>, condition: (T) -> Boolean): PolicyBuilder {
         exceptions.add(RetryableException(clazz, condition))
         return this
     }
