@@ -60,7 +60,7 @@ abstract class Policy {
 class PolicyBuilder internal constructor(): Policy() {
 
     companion object {
-        val DefaultSleep = 1000L
+        val DefaultSleep = 0L
     }
 
     override val exceptions = mutableListOf<RetryableException<*>>()
@@ -224,7 +224,9 @@ open class FixedRetry(val policy: FixedRetryPolicy) {
                     }
 
                     val sleep = policy.sleepFunc(executionContext.attempt(), prevSleep)
-                    Thread.sleep(sleep)
+                    if (sleep > 0) {
+                        Thread.sleep(sleep)
+                    }
                     prevSleep = sleep
                 } else {
                     break // exit for
