@@ -67,7 +67,7 @@ Policy.handle<Throwable>()
 ```
 
 ### Forever retry
-```
+```Kotlin
 // Fixed sleep between each retry
 Policy.handle<Throwable>()
       .sleep(1000)  
@@ -81,3 +81,6 @@ Retry *at least* for the specific amount of time.
 Policy.handle<Throwable>()
       .time(Duration.ofSeconds(30))
 ```
+
+#### Add to your projects
+[![](https://jitpack.io/v/mostafa-asg/retry.svg)](https://jitpack.io/#mostafa-asg/retry)
