@@ -147,6 +147,33 @@ class FixedRetryTest {
         assertTrue(now - start >= (sleep.sum() - inaccuracy))
     }
 
+    @Test
+    fun testSleepsWorkCorrectly3() {
+        val retryNum = 3
+        val inaccuracy = 100
+
+        val retry = Policy.handle<Throwable>()
+                .sleepFunc { attmpt, prevSleep ->
+                    if (attmpt == 1) {
+                        500
+                    } else {
+                        prevSleep * 2
+                    }
+                }
+                .retry(retryNum)
+
+        val start = System.currentTimeMillis()
+
+        runCatching {
+            retry {
+                throw Exception()
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        assertTrue(now - start >= (500 + 1000 + 2000 - inaccuracy))
+    }
+
     private fun notThrowException(): Int = 120
 
     private fun throwExceptionA(): Int {
