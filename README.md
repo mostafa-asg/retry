@@ -65,6 +65,49 @@ Policy.handle<Throwable>()
       }  
       .retry(3)           
 ```
+### Callbacks
+#### onRetry
+Called on each retry.
+```Kotlin
+Policy.handle<Throwable>()
+      .onRetry { exc, context ->
+          println(exc.message)
+          println("Retry number: ${context.attempt()}")
+      }
+      .retry(3)
+
+// ability to cancel retry by calling ExecutionContext.cancel()
+Policy.handle<Throwable>()
+      .onRetry { exc, context ->
+          if (someConditionMet)
+            context.cancel()
+      }
+      .retry(3)
+```
+#### onFailure
+Call only when all retry has been done and the result is unsuccessful.
+```Kotlin
+Policy.handle<Throwable>()
+      .onFailure { exc ->
+         println("This is the last exception: ${exc.message}")
+       }
+      .retry(3)
+```
+#### recover
+Provide the default value, if operation is not successful.  
+**Note**: if recover is provided, *onFailure* callback will not fire.
+```Kotlin
+val retry = Policy.handle<Throwable>()
+                  .onFailure { exc ->
+                     // THIS WONT EXECUTED
+                   }
+                  .retry(3)
+
+val message = retry(recover = { "default message" }) {
+    api.getMessageFromRemoteService()
+}
+println(message)
+```
 
 ### Forever retry
 ```Kotlin
