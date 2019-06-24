@@ -1,5 +1,11 @@
 package com.github.retry
 
+import com.github.retry.circuit.CircuitBreaker
+import com.github.retry.circuit.CircuitPolicy
+import com.github.retry.circuit.breakers.Breaker
+import com.github.retry.circuit.breakers.ConsecutiveThreshold
+import com.github.retry.circuit.breakers.SimpleThreshold
+import com.github.retry.circuit.breakers.TimebucketThreshold
 import java.time.Duration
 
 typealias RetryHandler = (Throwable, ExecutionContext) -> Unit
@@ -155,6 +161,38 @@ class PolicyBuilder internal constructor(): Policy() {
         )
 
         return TimeBasedRetry(policy)
+    }
+
+    fun thresholdCircuitBreaker(threshold: Long, closeCircuitAfter: Duration): CircuitBreaker {
+        val breaker = SimpleThreshold(threshold)
+        return createCircuitBreaker(closeCircuitAfter, breaker)
+    }
+
+    fun consecutiveThresholdCircuitBreaker(threshold: Long, closeCircuitAfter: Duration): CircuitBreaker {
+        val breaker = ConsecutiveThreshold(threshold)
+        return createCircuitBreaker(closeCircuitAfter, breaker)
+    }
+
+    fun timeBucketCircuitBreaker(bucketDuration: Duration,
+                                 threshold: Long,
+                                 closeCircuitAfter: Duration): CircuitBreaker {
+
+        val breaker = TimebucketThreshold(bucketDuration, threshold)
+        return createCircuitBreaker(closeCircuitAfter, breaker)
+    }
+
+    private fun createCircuitBreaker(closeCircuitAfter: Duration, breaker: Breaker): CircuitBreaker {
+        return CircuitBreaker(
+                CircuitPolicy(
+                        this.exceptions,
+                        this.onRetry,
+                        this.onFailure,
+                        this.sleepMillis,
+                        this.sleepFunc,
+                        closeCircuitAfter,
+                        breaker
+                )
+        )
     }
 
 }
