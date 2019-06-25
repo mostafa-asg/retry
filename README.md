@@ -6,7 +6,7 @@
 val withRetry = Policy.handle<Throwable>()
                       .retry(3)
     
-// It is strongly typed, world is type of String
+// The result is strongly typed, `world` is type of String
 val world = withRetry {
     print("Hello ")
     "World!" // return of this lambda
@@ -123,6 +123,44 @@ Retry *at least* for the specific amount of time.
 ```Kotlin
 Policy.handle<Throwable>()
       .time(Duration.ofSeconds(30))
+```
+### Circuit breaker
+#### Fixed threshold
+```Kotlin
+// If the number of failure reached 100, then circuit state will be changed to `open` for 5 seconds
+// meaning only the `recovery` function will be called during this time,
+// After 5 seconds, again the state will change to `closed`
+// There is no `half-open` state
+val circuit = Policy.handle<Exception>()
+                    .thresholdCircuitBreaker(100, Duration.ofSeconds(5))
+
+var result = circuit(recover = {"Default message"}) {
+            getMessageFromRemoteService()
+}
+```
+#### Consecutive threshold
+```Kotlin
+// Only `open` the circuit if consecutive error happened, in this case
+// 25 consecutive errors must be happend until circuit's state changed to `open`
+// It will remain in `open` state for 10 seconds
+val circuit = Policy.handle<Exception>()
+                    .consecutiveThresholdCircuitBreaker(25, Duration.ofSeconds(10))
+
+var result = circuit(recover = {"Default message"}) {
+            getMessageFromRemoteService()
+}
+```
+#### Timebucket threshold
+```Kotlin
+// Measure errors in time buckets, and if bucket reached the threshold it `open` the circuit
+
+// If in 5 seconds, the errors reached 40, then circuit will be in `open` state for about 1 seconds
+val circuit = Policy.handle<Exception>()
+                    .timeBucketCircuitBreaker(Duration.ofSeconds(5), 40, Duration.ofSeconds(1))
+
+var result = circuit(recover = {"Default message"}) {
+            getMessageFromRemoteService()
+}
 ```
 
 #### Add to your projects
